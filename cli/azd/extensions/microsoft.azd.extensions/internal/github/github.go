@@ -6,7 +6,9 @@ package github
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -169,6 +171,23 @@ func (gh *GitHubCli) CreateRelease(cwd string, tagName string, opts map[string]s
 
 	// Define boolean flags that should be added without values
 	booleanFlags := map[string]bool{"prerelease": true, "draft": true}
+
+	// If notes are provided, write them to a temp file and use --notes-file
+	// to avoid exceeding Windows' command-line length limit (~32K chars).
+	if notes, ok := opts["notes"]; ok && notes != "" {
+		tmpDir, err := os.MkdirTemp("", "azd-release-*")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create temp dir for release notes: %w", err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		notesFile := filepath.Join(tmpDir, "notes.md")
+		if err := os.WriteFile(notesFile, []byte(notes), 0600); err != nil {
+			return nil, fmt.Errorf("failed to write release notes to temp file: %w", err)
+		}
+		args = append(args, "--notes-file", notesFile)
+		delete(opts, "notes")
+	}
 
 	// Add optional arguments (skip boolean flags)
 	for key, value := range opts {
